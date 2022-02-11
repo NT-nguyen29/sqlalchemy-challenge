@@ -44,8 +44,8 @@ def home():
         f"/api/v1.0/precipitation <br/>"
         f"/api/v1.0/stations <br/>"
         f"/api/v1.0/tobs <br/>"
-        # f"/api/v1.0/<start> <br/>"
-        # f"/api/v1.0/<start>/<end> <br/>"
+        f"/api/v1.0/yyyy-mm-dd <br/>"
+        f"/api/v1.0/yyyy-mm-dd/yyyy-mm-dd"
     )
 
 @app.route("/api/v1.0/precipitation")
@@ -87,24 +87,69 @@ def tobs():
     mostActive_station = session.query(measurement.station)\
     .group_by(measurement.station).order_by(func.count(measurement.station).desc()).first()[0]
     # last/ most recent date in data set
-    most_recent_date = session.query(measurement.date).order_by(measurement.date.desc()).first()[0]
+    mostRecent_date = session.query(measurement.date).order_by(measurement.date.desc()).first()[0]
     # convert date into datetime obj to perform calculations
-    most_recent_cvt = dt.datetime.strptime(most_recent_date, '%Y-%m-%d')
-    
+    mostRecent_cvt = dt.datetime.strptime(mostRecent_date, '%Y-%m-%d')
 
+    # now for the main event (days=366 for inclusivity)
+    sel = [measurement.date, measurement.tobs]
+    mostActive_results = session.query(*sel).filter(measurement.station == mostActive_station)\
+    .filter(measurement.date >= (mostRecent_cvt - dt.timedelta(days=366))).all()
 
     session.close()
 
-    return jsonify()
+    mostActive_data =[]
+    for date, tobs in mostActive_results:
+        mostActive_dict ={}
+        mostActive_dict["date"] = date
+        mostActive_dict["tobs"] = tobs
+        mostActive_data.append(mostActive_dict)
 
-# @app.route("/api/v1.0/<start>")
-# def temps_start(start_date):
-#     """return JSON list of min/max/avg temps for all dates >= given start date"""
+    return jsonify(mostActive_data)
+
+@app.route("/api/v1.0/<start_date>")
+def temps_start(start_date):
+    """return JSON list of min/max/avg temps for all dates >= given start date"""
+    # since we've specified the input format as yyyy-mm-dd, there's no need to convert date into datetime obj
+    session = Session(engine)
+
+    sel = [func.min(measurement.tobs), func.max(measurement.tobs), func.avg(measurement.tobs)]
+    results_start = session.query(*sel).filter(measurement.date >= start_date).all()
+
+    session.close()
+
+    start_data = []
+    for min, max, avg in results_start:
+        start_dict = {}
+        start_dict["TMIN"] = min
+        start_dict["TMAX"] = max
+        start_dict["TAVG"] = avg
+        start_data.append(start_dict)
+
+    return jsonify(start_data)
 
 
-# @app.route("/api/v1.0/<start>/<end>")
-# def temps_start_end(start_date, end_date):
-    # """return JSON list of min/max/avg temps for all dates between given start and end dates (inclusive"""
+@app.route("/api/v1.0/<start_date>/<end_date>")
+def temps_start_end(start_date, end_date):
+    """return JSON list of min/max/avg temps for all dates between given start and end dates (inclusive"""
+    # same as @app.route("/api/v1.0/<start_date>") only this time we're given two inputs
+    # (https://stackoverflow.com/questions/8895208/sqlalchemy-how-to-filter-date-field)
+    session = Session(engine)
+
+    sel = [func.min(measurement.tobs), func.max(measurement.tobs), func.avg(measurement.tobs)]
+    results_start_end = session.query(*sel).filter(measurement.date.between(start_date, end_date)).all()
+
+    session.close()
+
+    start_end_data = []
+    for min, max, avg in results_start_end:
+        start_end_dict = {}
+        start_end_dict["TMIN"] = min
+        start_end_dict["TMAX"] = max
+        start_end_dict["TAVG"] = avg
+        start_end_data.append(start_end_dict)
+
+    return jsonify(start_end_data)
 
 if __name__ == "__main__":
     app.run(debug=True)
